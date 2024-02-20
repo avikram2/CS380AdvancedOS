@@ -18,6 +18,12 @@
         ptr = NULL;   \
     }
 
+#define ARR_FREE(arr, size)           \
+    for (size_t i = 0; i < size; ++i) \
+    {                                 \
+        PTR_FREE(arr[i]);              \
+    }
+
 static const char error_message[30] = "An error has occurred\n";
 
 #define PRINT_ERROR write(STDERR_FILENO, error_message, strlen(error_message));
@@ -280,13 +286,13 @@ void parseExecuteCommand(char *newLine)
         int redirectionFlag = 0;
         int redirectionValid = 0;
         checkForRedirection(command[i], redirectionFilename, &redirectionFlag, &redirectionValid);
-        //printf("command: %s\n", command[i]);
+        // printf("command: %s\n", command[i]);
 
         redirectionFlags[i] = redirectionFlag;
         redirectionValids[i] = redirectionValid;
         strcpy(redirectionFilenames[i], redirectionFilename);
         // printPath();
-        //printf("RedF: %s\n", redirectionFilename);
+        // printf("RedF: %s\n", redirectionFilename);
         strcpy(origPtr2, command[i]);
         token = strsep(&origPtr2, delim);
         while (token != NULL)
@@ -376,8 +382,8 @@ void parseExecuteCommand(char *newLine)
 
     for (unsigned int i = 0; i < instance; ++i)
     {
-        //printf("cmdArgs: %u\n", internalCounter);
-        //printf("CurrCom %s\n", currCommand[i][0]);
+        // printf("cmdArgs: %u\n", internalCounter);
+        // printf("CurrCom %s\n", currCommand[i][0]);
 
         if (cmdArgs[i] > 0)
         {
@@ -394,6 +400,8 @@ void parseExecuteCommand(char *newLine)
                 PTR_FREE(command[i]);
 
                 PTR_FREE(origPtr2Orig);
+
+                ARR_FREE(currCommand[i], cmdArgs[i]);
 
                 continue;
             }
@@ -412,7 +420,7 @@ void parseExecuteCommand(char *newLine)
                 if (redirectionValids[i] == 1)
                 {
                     // printPath();
-                    //printf("RF: %s\n", redirectionFilenames[i]);
+                    // printf("RF: %s\n", redirectionFilenames[i]);
                     open(redirectionFilenames[i], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
                 }
                 execv(outLocal, currCommand[i]);
@@ -430,6 +438,7 @@ void parseExecuteCommand(char *newLine)
                 PTR_FREE(command[i]);
 
                 PTR_FREE(origPtr2Orig);
+                ARR_FREE(currCommand[i], cmdArgs[i]);
             }
         }
     }
