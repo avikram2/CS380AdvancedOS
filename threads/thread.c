@@ -99,6 +99,10 @@ void thread_init (void)
   sema_init (&(initial_thread->wait_sem), 0);
   sema_init (&(initial_thread->load_sem), 0);
   lock_init (&(initial_thread->child_process_lock));
+   // init fd to 2
+  initial_thread->next_fd = 2;
+  // Init FD table 
+  list_init((&(initial_thread->file_descriptor_table)));
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
@@ -192,6 +196,11 @@ tid_t thread_create (const char *name, int priority, thread_func *function,
   // Init parent thread
   t->parent_thread = thread_current ();
   tid = t->tid = allocate_tid ();
+  // init fd to 2
+  t->next_fd = 2;
+  // Init FD table 
+  list_init((&(t->file_descriptor_table)));
+
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -330,6 +339,20 @@ void thread_foreach (thread_action_func *func, void *aux)
 void thread_set_priority (int new_priority)
 {
   thread_current ()->priority = new_priority;
+}
+
+struct thread * thread_get(tid_t tid)
+{
+  struct list_elem *e;
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if (tid == t->tid)
+      {
+        return t;
+      }
+    }
+    return NULL;
 }
 
 /* Returns the current thread's priority. */

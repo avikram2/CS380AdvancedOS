@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -68,7 +69,7 @@ tid_t process_execute (const char *file_name)
             {
               continue;
             }
-          if (child_proc->loadSuccess != true)
+          else if (child_proc->loadSuccess != true)
             {
               tid = TID_ERROR;
               palloc_free_page (fn_copy);
@@ -121,8 +122,9 @@ static void start_process (void *file_name_)
   if (!success)
     thread_exit ();
 
-  //hex_dump ((uintptr_t) if_.esp, if_.esp, (size_t) PHYS_BASE - (size_t) if_.esp,
-  //          true);
+  // hex_dump ((uintptr_t) if_.esp, if_.esp, (size_t) PHYS_BASE - (size_t)
+  // if_.esp,
+  //           true);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -132,7 +134,6 @@ static void start_process (void *file_name_)
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
   NOT_REACHED ();
-
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -146,12 +147,11 @@ static void start_process (void *file_name_)
    does nothing. */
 int process_wait (tid_t child_tid)
 {
-  struct thread * par = thread_current();
-  struct list_elem * e;
+  struct thread* par = thread_current();
+  struct list_elem *e;
   lock_acquire (&(par->child_process_lock));
   for (e = list_begin (&(par->child_process_table));
-       e != list_end (&(par->child_process_table));
-       e = list_next (e))
+       e != list_end (&(par->child_process_table)); e = list_next (e))
     {
       struct child_process *child_proc =
           list_entry (e, struct child_process, allelem);
@@ -175,15 +175,15 @@ int process_wait (tid_t child_tid)
               lock_release (&(par->child_process_lock));
               return -1;
             }
+          child_proc->proc_status = PROC_WAITED;
           lock_release (&(par->child_process_lock));
-          sema_down (
-              &(par->wait_sem)); // wait for the child thread to complete
+          sema_down (&(par->wait_sem)); // wait for the child thread to complete
           int ret_val = child_proc->child_exit_code;
           return ret_val;
-}
+        }
     }
-     lock_release (&(par->child_process_lock));
-     return -1;
+  lock_release (&(par->child_process_lock));
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -191,6 +191,41 @@ void process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  // struct list_elem *e;
+  // for (e = list_begin (&(cur->file_descriptor_table));
+  //      e != list_end (&(cur->file_descriptor_table)); e = list_next (e))
+  //   {
+
+  //     struct file_descriptor *fd_entry =
+  //         list_entry (e, struct file_descriptor, allelem);
+  //     lock_acquire (&(filesys_lock));
+  //     file_close (fd_entry->file_);
+  //     lock_release (&(filesys_lock));
+  //     list_remove (&(fd_entry->allelem));
+  //   }
+
+  // Deallocate child list to avoid mem leaks
+  struct list_elem *e = NULL;
+  for (e = list_begin (&(cur->child_process_table));
+       e != list_end (&(cur->child_process_table)); e = list_next (e))
+    {
+      if (list_tail(e) == true)
+      {
+        break;
+      }
+
+      struct child_process *child_proc =
+          list_entry (e, struct child_process, allelem);
+
+      list_remove (&(child_proc->allelem));
+      //free (child_proc);
+
+      if (list_tail(e) == true)
+      {
+        break;
+      }
+    }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -208,6 +243,11 @@ void process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  lock_acquire (&(filesys_lock));
+  file_close (cur->executable);
+  lock_release (&(filesys_lock));
+
 }
 
 /* Sets up the CPU for running user code in the current
@@ -288,7 +328,7 @@ struct Elf32_Phdr
 #define PF_W 2 /* Writable. */
 #define PF_R 4 /* Readable. */
 
-static bool setup_stack (void **esp, char ** args, int arg_index);
+static bool setup_stack (void **esp, char **args, int arg_index);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -312,8 +352,8 @@ bool load (const char *file_name, void (**eip) (void), void **esp)
   char *token = NULL;
   int arg_index = 0;
 
-  char *f_copy = malloc(strlen(file_name) + 1);
-  strlcpy(f_copy, file_name, strlen(file_name) + 1);
+  char *f_copy = malloc (strlen (file_name) + 1);
+  strlcpy (f_copy, file_name, strlen (file_name) + 1);
 
   for (token = strtok_r (f_copy, " ", &saved_ptr); token != NULL;
        token = strtok_r (NULL, " ", &saved_ptr))
@@ -322,12 +362,14 @@ bool load (const char *file_name, void (**eip) (void), void **esp)
       arg_index += 1;
     }
 
-
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL)
     goto done;
   process_activate ();
+
+  // Global filesys lock acquire
+  lock_acquire (&(filesys_lock));
 
   /* Open executable file. */
   file = filesys_open (args[0]);
@@ -407,6 +449,10 @@ bool load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
+  // disallow write modifications
+  file_deny_write (file);
+  t->executable = file;
+
   /* Set up stack. */
   if (!setup_stack (esp, args, arg_index))
     goto done;
@@ -418,8 +464,13 @@ bool load (const char *file_name, void (**eip) (void), void **esp)
 
 done:
   /* We arrive here whether the load is successful or not. */
-  free(f_copy);
-  file_close (file);
+  lock_release (&(filesys_lock));
+  free (f_copy);
+  if (success == false)
+    {
+      file_close (file);
+      t->executable = NULL;
+    }
   return success;
 }
 
@@ -550,7 +601,7 @@ static bool setup_stack (void **esp, char **args, int arg_index)
             {
               /* copy args to stack */
               *esp = (void *) ((unsigned long) (*esp) -
-                                  (strlen (args[idx - 1]) + 1));
+                               (strlen (args[idx - 1]) + 1));
               addresses[idx - 1] = *esp;
               memcpy (*esp, args[idx - 1], strlen (args[idx - 1]) + 1);
             }

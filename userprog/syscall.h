@@ -8,6 +8,9 @@
 #include "devices/shutdown.h"
 #include <stdlib.h>
 #include "threads/synch.h"
+#include "filesys/directory.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
 struct lock filesys_lock;
 

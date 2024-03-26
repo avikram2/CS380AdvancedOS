@@ -27,6 +27,7 @@ enum process_status
    PROC_ACTIVE,  /* Neither waited nor exited */
 };
 
+/* metadata for a child process */
 struct child_process
 {
    struct list_elem allelem;
@@ -34,6 +35,15 @@ struct child_process
    enum process_status  proc_status;
    int child_exit_code;
    bool loadSuccess; /* whether the child loaded successfully or not*/
+};
+
+// File descriptor table
+
+struct file_descriptor
+{
+   int fd;
+   struct list_elem allelem;
+   struct file * file_; // actual pointer to file
 };
 
 
@@ -127,7 +137,10 @@ struct thread
 
   int next_fd;
 
-  
+  struct list file_descriptor_table;
+
+  struct file * executable; /* executable so we can deny modifications to it while running*/
+
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
@@ -168,6 +181,8 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+
+struct thread * thread_get(tid_t tid);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
